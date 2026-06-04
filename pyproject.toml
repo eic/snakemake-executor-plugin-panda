@@ -1,0 +1,32 @@
+[tool.poetry]
+name = "snakemake-executor-plugin-panda"
+version = "1.0.0"
+description = ""
+authors = ["Dmitry Kalinkin <dmitry.kalinkin+snakemake@gmail.com>"]
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/snakemake/snakemake-executor-plugin-panda"
+documentation = "https://snakemake.github.io/snakemake-plugin-catalog/plugins/executor/panda.html"
+keywords = ["snakemake", "plugin", "executor", "cluster"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+snakemake-interface-executor-plugins = "^9.0.0"
+snakemake-interface-common = "^1.13.0"
+
+[tool.poetry.group.dev.dependencies]
+snakemake = "^8.20.1"
+black = "^23.7.0"
+flake8 = ">=6.1,<8.0"
+coverage = "^7.3.0"
+pytest = ">=7.4.1,<9.0.0"
+
+[tool.coverage.report]
+fail_under = 74
+
+[tool.coverage.run]
+omit = [".*", "*/site-packages/*", "Snakefile"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
