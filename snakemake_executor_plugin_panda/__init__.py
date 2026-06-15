@@ -4,6 +4,7 @@ __email__ = "dmitry.kalinkin+snakemake@gmail.com"
 __license__ = "MIT"
 
 import os
+import re
 import shutil
 import uuid
 from pathlib import Path
@@ -104,9 +105,14 @@ class Executor(RemoteExecutor):
         if status != 0:
             raise RuntimeError(f"Job submission error: {result}")
 
-        jedi_task_id = result[2]
-        if jedi_task_id is None:
-            jedi_task_id = result[1]
+        if len(result) == 3:
+            # Old PanDA
+            jedi_task_id = result[2]
+            if jedi_task_id is None:
+                jedi_task_id = result[1]
+        else:
+            m = re.search(r"jediTaskID=(\d+)", result[1])
+            jedi_task_id = int(m.group(1))
 
         print("Task id", jedi_task_id)
         job_info = SubmittedJobInfo(
