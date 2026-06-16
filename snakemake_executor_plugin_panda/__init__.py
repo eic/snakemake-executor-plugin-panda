@@ -74,7 +74,8 @@ class Executor(RemoteExecutor):
         with open(jobscript, "rt") as fp:
             s = fp.read()
 
-        s = s.replace("pip install --target '.snakemake/pip-deployments' snakemake-storage-plugin-rucio && ", "")
+        pip_install_cmd, s = s.split(" && ", 1)
+        assert "pip install" in pip_install_cmd
 
         with open(jobscript, "wt") as fp:
             fp.write(s)
