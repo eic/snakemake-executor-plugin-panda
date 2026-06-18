@@ -5,7 +5,7 @@ description = ""
 authors = ["Dmitry Kalinkin <dmitry.kalinkin+snakemake@gmail.com>"]
 readme = "README.md"
 license = "MIT"
-repository = "https://github.com/snakemake/snakemake-executor-plugin-panda"
+repository = "https://github.com/eic/snakemake-executor-plugin-panda"
 documentation = "https://snakemake.github.io/snakemake-plugin-catalog/plugins/executor/panda.html"
 keywords = ["snakemake", "plugin", "executor", "cluster"]
 
