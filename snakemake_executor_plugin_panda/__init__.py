@@ -99,7 +99,12 @@ class Executor(RemoteExecutor):
         os.chdir(prev)
         params["maxAttempt"] = 1
         params["processingType"] = "snakemake_plugin"
-        params["ramCount"] = 3096
+        if job.resources.get("mem_mb"):
+            params["ramCount"] = job.resources.get("mem_mb")
+            params["ramUnit"] = "MB"
+        if job.resources.get("disk_mb"):
+            params["workDiskCount"] = job.resources.get("disk_mb")
+            params["workDiskUnit"] = "MB"
 
         status, result = Client.insertTaskParams(params)
 
