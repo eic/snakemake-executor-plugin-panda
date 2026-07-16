@@ -34,6 +34,13 @@ class ExecutorSettings(ExecutorSettingsBase):
             "required": False,
         },
     )
+    max_attempt: int = field(
+        default=1,
+        metadata={
+            "help": "Maximum number of retry attempts for a PanDA task",
+            "required": False,
+        },
+    )
 
 common_settings = CommonSettings(
     # define whether your executor plugin executes locally
@@ -97,7 +104,7 @@ class Executor(RemoteExecutor):
         os.chdir(Path(jobscript).parent)
         params = PrunScript.main(True, prun_args)
         os.chdir(prev)
-        params["maxAttempt"] = 1
+        params["maxAttempt"] = self.workflow.executor_settings.max_attempt
         params["processingType"] = "snakemake_plugin"
         if job.resources.get("mem_mb"):
             params["ramCount"] = job.resources.get("mem_mb")
