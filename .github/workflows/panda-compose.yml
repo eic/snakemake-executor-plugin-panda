@@ -48,7 +48,7 @@ env:
   # relative volume paths ./config, ./scripts resolve against its own
   # checkout).
   COMPOSE_PROJECT_NAME: panda-compose
-  COMPOSE_FILE: $GITHUB_WORKSPACE/snakemake-executor-plugin-panda/docker-compose.yml:$GITHUB_WORKSPACE/panda-compose/docker-compose.yml
+  COMPOSE_FILE: ${GITHUB_WORKSPACE}/snakemake-executor-plugin-panda/docker-compose.yml:${GITHUB_WORKSPACE}/panda-compose/docker-compose.yml
   # Seconds to wait for the PanDA task to reach a terminal state after the
   # workflow returns (snakemake already blocks; this is just belt & braces).
   TIMEOUT: 600
