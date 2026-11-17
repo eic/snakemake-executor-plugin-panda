@@ -107,35 +107,43 @@ jobs:
       # patched in-image to cast the --storage-rucio-timeout CLI string to
       # int (upstream bug: urllib3 rejects str timeouts).
       - name: Build snakemake worker image
+        env:
+          SNAKEMAKE_VERSION: ${{ inputs.snakemake_version || env.SNAKEMAKE_VERSION }}
         run: |
-          cat > "$GITHUB_WORKSPACE/panda-compose/worker.Dockerfile" <<'EOF'
+          set -euo pipefail
+          DF="$GITHUB_WORKSPACE/panda-compose/worker.Dockerfile"
+          cat > "$DF" <<'DOCKERFILE_EOF'
           FROM python:3.11-slim
+          ARG SNAKEMAKE_VERSION=9.27.1
           RUN pip install --quiet --no-cache-dir \
                 snakemake==${SNAKEMAKE_VERSION} \
                 snakemake-executor-plugin-panda \
                 snakemake-storage-plugin-rucio \
                 rucio
-          # upstream snakemake-storage-plugin-rucio: cast CLI string timeout to int
-          RUN python - <<'EOF'
-          import re, pathlib
+          COPY plugin /plugin
+          RUN pip install --quiet --no-deps /plugin
+          # upstream snakemake-storage-plugin-rucio bug: --storage-rucio-timeout
+          # arrives as a CLI string and urllib3 rejects str timeouts. Cast to int.
+          COPY patch_timeout.py /patch_timeout.py
+          RUN python /patch_timeout.py
+          DOCKERFILE_EOF
+          cat > "$GITHUB_WORKSPACE/panda-compose/patch_timeout.py" <<'PYEOF'
+          import pathlib
           p = pathlib.Path("/usr/local/lib/python3.11/site-packages/snakemake_storage_plugin_rucio/__init__.py")
           src = p.read_text()
-          old = "timeout: Optional[int] = 600"
-          new = "timeout: Optional[int] = 600  # CLI arrives as str; cast below"
-          assert old in src
-          src = src.replace(old, new, 1)
           anchor = "self.client = rucio.client.Client(logger=self.logger, **client_kwargs)"
-          assert anchor in src
-          src = src.replace(anchor, "client_kwargs['timeout'] = int(client_kwargs['timeout']) if client_kwargs.get('timeout') is not None else None\n        " + anchor, 1)
+          assert anchor in src, "anchor not found in rucio storage plugin"
+          cast = ("client_kwargs['timeout'] = int(client_kwargs['timeout']) "
+                  "if client_kwargs.get('timeout') is not None else None\n        ")
+          src = src.replace(anchor, cast + anchor, 1)
           p.write_text(src)
-          EOF
-          EOF
-          sed -i "s/\${SNAKEMAKE_VERSION}/${SNAKEMAKE_VERSION}/" "$GITHUB_WORKSPACE/panda-compose/worker.Dockerfile"
-          # install the plugin under test into the image instead of the PyPI release
-          sed -i 's/snakemake-executor-plugin-panda \\/snakemake-executor-plugin-panda==0.0.0 \\\n                --no-deps \/plugin \\/' "$GITHUB_WORKSPACE/panda-compose/worker.Dockerfile"
-          docker build -f "$GITHUB_WORKSPACE/panda-compose/worker.Dockerfile" -t panda-compose/snakemake-worker:$SNAKEMAKE_VERSION --build-arg SNAKEMAKE_VERSION=$SNAKEMAKE_VERSION --build-context plugin="$GITHUB_WORKSPACE/snakemake-executor-plugin-panda" "$GITHUB_WORKSPACE/panda-compose"
-        env:
-          SNAKEMAKE_VERSION: ${{ inputs.snakemake_version || env.SNAKEMAKE_VERSION }}
+          print("patched rucio storage plugin timeout cast")
+          PYEOF
+          docker build -f "$DF" \
+            -t "panda-compose/snakemake-worker:$SNAKEMAKE_VERSION" \
+            --build-arg SNAKEMAKE_VERSION="$SNAKEMAKE_VERSION" \
+            --build-context plugin="$GITHUB_WORKSPACE/snakemake-executor-plugin-panda" \
+            "$GITHUB_WORKSPACE/panda-compose"
 
       # ---- 4. Boot the stack, staged like swf-testbed ----
       - name: Start infrastructure (postgres, activemq, ruciodb)
