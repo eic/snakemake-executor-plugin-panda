@@ -36,6 +36,12 @@ on:
         default: "9.27.1"
 
 env:
+  # Defaults used on pull_request/push events, where workflow_dispatch
+  # `inputs.*` are empty. workflow_dispatch passes its inputs through the
+  # per-step env mappings below, overriding these.
+  PANDA_COMPOSE_REPO: PanDAWMS/panda-compose
+  PANDA_COMPOSE_REF: feature/harvester-docker-worker-rucio
+  SNAKEMAKE_VERSION: "9.27.1"
   # Stable project name so container names stay <project>-<service>-1
   # regardless of the --project-directory override (same trick as
   # swf-testbed: that override points at ../panda-compose so panda-compose's
@@ -66,8 +72,8 @@ jobs:
 
       - name: Checkout panda-compose
         env:
-          PC_REPO: ${{ inputs.panda_compose_repo }}
-          PC_REF: ${{ inputs.panda_compose_ref }}
+          PC_REPO: ${{ inputs.panda_compose_repo || env.PANDA_COMPOSE_REPO }}
+          PC_REF: ${{ inputs.panda_compose_ref || env.PANDA_COMPOSE_REF }}
         run: |
           set -euo pipefail
           : "${PC_REPO:?panda_compose_repo input empty}"
@@ -129,7 +135,7 @@ jobs:
           sed -i 's/snakemake-executor-plugin-panda \\/snakemake-executor-plugin-panda==0.0.0 \\\n                --no-deps \/plugin \\/' "$GITHUB_WORKSPACE/panda-compose/worker.Dockerfile"
           docker build -f "$GITHUB_WORKSPACE/panda-compose/worker.Dockerfile" -t panda-compose/snakemake-worker:$SNAKEMAKE_VERSION --build-arg SNAKEMAKE_VERSION=$SNAKEMAKE_VERSION --build-context plugin="$GITHUB_WORKSPACE/snakemake-executor-plugin-panda" "$GITHUB_WORKSPACE/panda-compose"
         env:
-          SNAKEMAKE_VERSION: ${{ inputs.snakemake_version }}
+          SNAKEMAKE_VERSION: ${{ inputs.snakemake_version || env.SNAKEMAKE_VERSION }}
 
       # ---- 4. Boot the stack, staged like swf-testbed ----
       - name: Start infrastructure (postgres, activemq, ruciodb)
@@ -173,7 +179,7 @@ jobs:
       # ---- 6. Run the mini snakemake workflow through the panda executor ----
       - name: Run snakemake workflow on PanDA
         env:
-          SNAKEMAKE_VERSION: ${{ inputs.snakemake_version }}
+          SNAKEMAKE_VERSION: ${{ inputs.snakemake_version || env.SNAKEMAKE_VERSION }}
           PANDA_AUTH: x509_no_grid          # dev/no-auth server; skips grid passphrase prompt
           PANDA_VO: epic
           PANDA_AUTH_VO: EIC
