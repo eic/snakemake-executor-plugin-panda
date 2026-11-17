@@ -119,7 +119,7 @@ jobs:
           EOF
           sed -i "s/\${SNAKEMAKE_VERSION}/${{ inputs.snakemake_version }}/" "$GITHUB_WORKSPACE/panda-compose/worker.Dockerfile"
           # install the plugin under test into the image instead of the PyPI release
-          sed -i 's/snakemake-executor-plugin-panda \\/snakemake-executor-plugin-panda==0.0.0 \\\n                --no-deps \/plugin \\/' ../panda-compose/worker.Dockerfile
+          sed -i 's/snakemake-executor-plugin-panda \\/snakemake-executor-plugin-panda==0.0.0 \\\n                --no-deps \/plugin \\/' "$GITHUB_WORKSPACE/panda-compose/worker.Dockerfile"
           docker build -f "$GITHUB_WORKSPACE/panda-compose/worker.Dockerfile" -t panda-compose/snakemake-worker:${{ inputs.snakemake_version }} --build-arg SNAKEMAKE_VERSION=${{ inputs.snakemake_version }} --build-context plugin="$GITHUB_WORKSPACE/snakemake-executor-plugin-panda" "$GITHUB_WORKSPACE/panda-compose"
         env:
           SNAKEMAKE_VERSION: ${{ inputs.snakemake_version }}
