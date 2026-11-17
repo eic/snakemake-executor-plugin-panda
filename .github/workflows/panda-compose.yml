@@ -42,7 +42,7 @@ env:
   # relative volume paths ./config, ./scripts resolve against its own
   # checkout).
   COMPOSE_PROJECT_NAME: panda-compose
-  COMPOSE_FILE: docker-compose.yml:../panda-compose/docker-compose.yml
+  COMPOSE_FILE: $GITHUB_WORKSPACE/snakemake-executor-plugin-panda/docker-compose.yml:$GITHUB_WORKSPACE/panda-compose/docker-compose.yml
   # Seconds to wait for the PanDA task to reach a terminal state after the
   # workflow returns (snakemake already blocks; this is just belt & braces).
   TIMEOUT: 600
@@ -75,15 +75,12 @@ jobs:
       #         beyond the shipped dev defaults, exactly like swf-testbed) ----
       - name: Create panda-compose .env
         run: |
-          set -x
-          echo "workspace=$GITHUB_WORKSPACE"
-          pwd
-          ls -la "$GITHUB_WORKSPACE"
-          ls -la "$GITHUB_WORKSPACE/panda-compose" | head -10
-          cp "$GITHUB_WORKSPACE/panda-compose/.env.example" "$GITHUB_WORKSPACE/panda-compose/.env"
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/panda-compose"
+          cp .env.example .env
           # One local docker queue is enough; the executor targets E1_BNL by
           # default which setup-queue.sh registers as a local queue.
-          printf 'PANDA_QUEUES=PANDA_COMPOSE_LOCAL E1_BNL\n' >> ../panda-compose/.env
+          printf 'PANDA_QUEUES=PANDA_COMPOSE_LOCAL E1_BNL\n' >> .env
 
       # ---- 3. Build the snakemake worker image ----
       #
@@ -126,12 +123,10 @@ jobs:
 
       # ---- 4. Boot the stack, staged like swf-testbed ----
       - name: Start infrastructure (postgres, activemq, ruciodb)
-        working-directory: snakemake-executor-plugin-panda
         run: |
-          docker compose --project-directory ../panda-compose up -d postgres activemq ruciodb
+          docker compose --project-directory "$GITHUB_WORKSPACE/panda-compose" up -d postgres activemq ruciodb
 
       - name: Wait for PostgreSQL stability
-        working-directory: snakemake-executor-plugin-panda
         run: |
           # panda-database restarts once during first init; require two
           # consecutive healthy reads (same as swf-testbed).
@@ -144,12 +139,10 @@ jobs:
           [ "${c:-0}" -ge 2 ] || { docker logs panda-compose-postgres-1 | tail -80; exit 1; }
 
       - name: Start PanDA server, Rucio, idds, harvester
-        working-directory: snakemake-executor-plugin-panda
         run: |
-          docker compose --project-directory ../panda-compose up -d panda-server rucio idds harvester
+          docker compose --project-directory "$GITHUB_WORKSPACE/panda-compose" up -d panda-server rucio idds harvester
 
       - name: Wait for PanDA server and Rucio
-        working-directory: snakemake-executor-plugin-panda
         run: |
           for i in $(seq 1 60); do
             panda=$(curl -s -o /dev/null -w '%{http_code}' -m 3 http://127.0.0.1:25080/api/v1/system/ping || true)
@@ -169,7 +162,6 @@ jobs:
 
       # ---- 6. Run the mini snakemake workflow through the panda executor ----
       - name: Run snakemake workflow on PanDA
-        working-directory: snakemake-executor-plugin-panda
         env:
           PANDA_AUTH: x509_no_grid          # dev/no-auth server; skips grid passphrase prompt
           PANDA_VO: epic
@@ -183,7 +175,7 @@ jobs:
           RUCIO_CONFIG: /tmp/swf/rucio.cfg
         run: |
           set -euo pipefail
-          pip install --quiet "snakemake==${SNAKEMAKE_VERSION}" . snakemake-storage-plugin-rucio
+          pip install --quiet "snakemake==${SNAKEMAKE_VERSION}" "$GITHUB_WORKSPACE/snakemake-executor-plugin-panda" snakemake-storage-plugin-rucio
           mkdir -p /tmp/swf
           # client-side rucio config: userpass auth against the compose rucio on host port 25081
           cat > /tmp/swf/rucio.cfg <<EOF
@@ -197,7 +189,7 @@ jobs:
           [common]
           loglevel = DEBUG
           EOF
-          cd tests/integration
+          cd "$GITHUB_WORKSPACE/snakemake-executor-plugin-panda/tests/integration"
           snakemake \
             --executor panda --panda-pre-script "true" \
             --default-storage-provider rucio --default-storage-prefix rucio://mock \
@@ -242,9 +234,8 @@ jobs:
       # ---- 8. Always dump logs for post-mortem ----
       - name: Dump service logs
         if: always()
-        working-directory: snakemake-executor-plugin-panda
         run: |
           echo "::group::compose logs"
-          docker compose --project-directory ../panda-compose logs --tail=300 || true
+          docker compose --project-directory "$GITHUB_WORKSPACE/panda-compose" logs --tail=300 || true
           echo "::endgroup::"
           docker logs panda-compose-harvester-1 2>&1 | tail -200 || true
