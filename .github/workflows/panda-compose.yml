@@ -140,10 +140,10 @@ jobs:
           print("patched rucio storage plugin timeout cast")
           PYEOF
           docker build -f "$DF" \
+            --build-context plugin="$GITHUB_WORKSPACE/snakemake-executor-plugin-panda" \
             -t "panda-compose/snakemake-worker:$SNAKEMAKE_VERSION" \
             --build-arg SNAKEMAKE_VERSION="$SNAKEMAKE_VERSION" \
-            --build-context plugin="$GITHUB_WORKSPACE/snakemake-executor-plugin-panda" \
-            "$GITHUB_WORKSPACE/panda-compose"
+            .
 
       # ---- 4. Boot the stack, staged like swf-testbed ----
       - name: Start infrastructure (postgres, activemq, ruciodb)
