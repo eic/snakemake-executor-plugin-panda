@@ -111,8 +111,8 @@ jobs:
           SNAKEMAKE_VERSION: ${{ inputs.snakemake_version || env.SNAKEMAKE_VERSION }}
         run: |
           set -euo pipefail
-          DF=worker.Dockerfile
-          cat > "$DF" <<'DOCKERFILE_EOF'
+          DF="$GITHUB_WORKSPACE/snakemake-executor-plugin-panda/worker.Dockerfile"
+          cat > "$GITHUB_WORKSPACE/snakemake-executor-plugin-panda/worker.Dockerfile" <<'DOCKERFILE_EOF'
           FROM python:3.11-slim
           ARG SNAKEMAKE_VERSION=9.27.1
           RUN pip install --quiet --no-cache-dir \
