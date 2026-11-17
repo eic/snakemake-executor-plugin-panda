@@ -111,7 +111,7 @@ jobs:
           SNAKEMAKE_VERSION: ${{ inputs.snakemake_version || env.SNAKEMAKE_VERSION }}
         run: |
           set -euo pipefail
-          DF="$GITHUB_WORKSPACE/panda-compose/worker.Dockerfile"
+          DF=worker.Dockerfile
           cat > "$DF" <<'DOCKERFILE_EOF'
           FROM python:3.11-slim
           ARG SNAKEMAKE_VERSION=9.27.1
@@ -127,7 +127,7 @@ jobs:
           COPY patch_timeout.py /patch_timeout.py
           RUN python /patch_timeout.py
           DOCKERFILE_EOF
-          cat > "$GITHUB_WORKSPACE/panda-compose/patch_timeout.py" <<'PYEOF'
+          cat > patch_timeout.py <<'PYEOF'
           import pathlib
           p = pathlib.Path("/usr/local/lib/python3.11/site-packages/snakemake_storage_plugin_rucio/__init__.py")
           src = p.read_text()
@@ -139,7 +139,7 @@ jobs:
           p.write_text(src)
           print("patched rucio storage plugin timeout cast")
           PYEOF
-          docker build -f "$DF" \
+          docker build -f worker.Dockerfile \
             --build-context plugin="$GITHUB_WORKSPACE/snakemake-executor-plugin-panda" \
             -t "panda-compose/snakemake-worker:$SNAKEMAKE_VERSION" \
             --build-arg SNAKEMAKE_VERSION="$SNAKEMAKE_VERSION" \
