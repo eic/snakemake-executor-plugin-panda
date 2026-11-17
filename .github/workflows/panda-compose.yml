@@ -74,11 +74,12 @@ jobs:
       # ---- 2. panda-compose .env (from upstream example; no secrets needed
       #         beyond the shipped dev defaults, exactly like swf-testbed) ----
       - name: Create panda-compose .env
+        working-directory: snakemake-executor-plugin-panda
         run: |
-          cp panda-compose/.env.example panda-compose/.env
+          cp ../panda-compose/.env.example ../panda-compose/.env
           # One local docker queue is enough; the executor targets E1_BNL by
           # default which setup-queue.sh registers as a local queue.
-          printf 'PANDA_QUEUES=PANDA_COMPOSE_LOCAL E1_BNL\n' >> panda-compose/.env
+          printf 'PANDA_QUEUES=PANDA_COMPOSE_LOCAL E1_BNL\n' >> ../panda-compose/.env
 
       # ---- 3. Build the snakemake worker image ----
       #
@@ -90,7 +91,7 @@ jobs:
       # int (upstream bug: urllib3 rejects str timeouts).
       - name: Build snakemake worker image
         run: |
-          cat > panda-compose/worker.Dockerfile <<'EOF'
+          cat > ../panda-compose/worker.Dockerfile <<'EOF'
           FROM python:3.11-slim
           RUN pip install --quiet --no-cache-dir \
                 snakemake==${SNAKEMAKE_VERSION} \
@@ -112,10 +113,10 @@ jobs:
           p.write_text(src)
           EOF
           EOF
-          sed -i "s/\${SNAKEMAKE_VERSION}/${{ inputs.snakemake_version }}/" panda-compose/worker.Dockerfile
+          sed -i "s/\${SNAKEMAKE_VERSION}/${{ inputs.snakemake_version }}/" ../panda-compose/worker.Dockerfile
           # install the plugin under test into the image instead of the PyPI release
-          sed -i 's/snakemake-executor-plugin-panda \\/snakemake-executor-plugin-panda==0.0.0 \\\n                --no-deps \/plugin \\/' panda-compose/worker.Dockerfile
-          docker build -f panda-compose/worker.Dockerfile -t panda-compose/snakemake-worker:${{ inputs.snakemake_version }} --build-arg SNAKEMAKE_VERSION=${{ inputs.snakemake_version }} --build-context plugin=snakemake-executor-plugin-panda panda-compose
+          sed -i 's/snakemake-executor-plugin-panda \\/snakemake-executor-plugin-panda==0.0.0 \\\n                --no-deps \/plugin \\/' ../panda-compose/worker.Dockerfile
+          docker build -f ../panda-compose/worker.Dockerfile -t panda-compose/snakemake-worker:${{ inputs.snakemake_version }} --build-arg SNAKEMAKE_VERSION=${{ inputs.snakemake_version }} --build-context plugin=. ../panda-compose
         env:
           SNAKEMAKE_VERSION: ${{ inputs.snakemake_version }}
 
@@ -160,7 +161,7 @@ jobs:
       - name: Bootstrap Rucio
         run: |
           SCOPES="user.alice user.root mock" \
-            bash panda-compose/scripts/bootstrap-rucio.sh panda-compose-rucio-1
+            bash ../panda-compose/scripts/bootstrap-rucio.sh panda-compose-rucio-1
 
       # ---- 6. Run the mini snakemake workflow through the panda executor ----
       - name: Run snakemake workflow on PanDA
