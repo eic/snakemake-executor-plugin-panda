@@ -120,7 +120,7 @@ jobs:
                 snakemake-executor-plugin-panda \
                 snakemake-storage-plugin-rucio \
                 rucio
-          COPY plugin /plugin
+          COPY . /plugin
           RUN pip install --quiet --no-deps /plugin
           # upstream snakemake-storage-plugin-rucio bug: --storage-rucio-timeout
           # arrives as a CLI string and urllib3 rejects str timeouts. Cast to int.
