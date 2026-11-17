@@ -76,6 +76,8 @@ jobs:
       - name: Create panda-compose .env
         working-directory: snakemake-executor-plugin-panda
         run: |
+          echo "workspace=$GITHUB_WORKSPACE"; pwd; ls -la .. | head -8
+          test -f ../panda-compose/.env.example || { echo "MISSING ../panda-compose/.env.example"; exit 1; }
           cp ../panda-compose/.env.example ../panda-compose/.env
           # One local docker queue is enough; the executor targets E1_BNL by
           # default which setup-queue.sh registers as a local queue.
