@@ -76,6 +76,9 @@ jobs:
       - name: Create panda-compose .env
         run: |
           set -euo pipefail
+          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
+          ls -la "$GITHUB_WORKSPACE" || true
+          ls -la "$GITHUB_WORKSPACE/panda-compose" | head -15
           cd "$GITHUB_WORKSPACE/panda-compose"
           cp .env.example .env
           # One local docker queue is enough; the executor targets E1_BNL by
