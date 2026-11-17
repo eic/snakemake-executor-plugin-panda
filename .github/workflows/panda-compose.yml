@@ -65,11 +65,12 @@ jobs:
           path: snakemake-executor-plugin-panda
 
       - name: Checkout panda-compose
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ inputs.panda_compose_repo }}
-          ref: ${{ inputs.panda_compose_ref }}
-          path: panda-compose
+        run: |
+          set -euo pipefail
+          repo="${{ inputs.panda_compose_repo }}"
+          ref="${{ inputs.panda_compose_ref }}"
+          git clone --depth 1 --branch "$ref" "https://github.com/${repo}.git" "$GITHUB_WORKSPACE/panda-compose"
+          ls "$GITHUB_WORKSPACE/panda-compose" | head -8
 
       - name: Debug workspace layout
         run: |
