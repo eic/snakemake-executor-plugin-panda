@@ -71,14 +71,17 @@ jobs:
           ref: ${{ inputs.panda_compose_ref }}
           path: panda-compose
 
+      - name: Debug workspace layout
+        run: |
+          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
+          ls -la "$GITHUB_WORKSPACE"
+          ls "$GITHUB_WORKSPACE/panda-compose" | head -8
+
       # ---- 2. panda-compose .env (from upstream example; no secrets needed
       #         beyond the shipped dev defaults, exactly like swf-testbed) ----
       - name: Create panda-compose .env
         run: |
           set -euo pipefail
-          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
-          ls -la "$GITHUB_WORKSPACE" || true
-          ls -la "$GITHUB_WORKSPACE/panda-compose" | head -15
           cd "$GITHUB_WORKSPACE/panda-compose"
           cp .env.example .env
           # One local docker queue is enough; the executor targets E1_BNL by
