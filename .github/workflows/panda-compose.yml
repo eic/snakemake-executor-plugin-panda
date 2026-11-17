@@ -65,11 +65,14 @@ jobs:
           path: snakemake-executor-plugin-panda
 
       - name: Checkout panda-compose
+        env:
+          PC_REPO: ${{ inputs.panda_compose_repo }}
+          PC_REF: ${{ inputs.panda_compose_ref }}
         run: |
           set -euo pipefail
-          repo="${{ inputs.panda_compose_repo }}"
-          ref="${{ inputs.panda_compose_ref }}"
-          git clone --depth 1 --branch "$ref" "https://github.com/${repo}.git" "$GITHUB_WORKSPACE/panda-compose"
+          : "${PC_REPO:?panda_compose_repo input empty}"
+          : "${PC_REF:?panda_compose_ref input empty}"
+          git clone --depth 1 --branch "$PC_REF" "https://github.com/${PC_REPO}.git" "$GITHUB_WORKSPACE/panda-compose"
           ls "$GITHUB_WORKSPACE/panda-compose" | head -8
 
       - name: Debug workspace layout
@@ -121,10 +124,10 @@ jobs:
           p.write_text(src)
           EOF
           EOF
-          sed -i "s/\${SNAKEMAKE_VERSION}/${{ inputs.snakemake_version }}/" "$GITHUB_WORKSPACE/panda-compose/worker.Dockerfile"
+          sed -i "s/\${SNAKEMAKE_VERSION}/${SNAKEMAKE_VERSION}/" "$GITHUB_WORKSPACE/panda-compose/worker.Dockerfile"
           # install the plugin under test into the image instead of the PyPI release
           sed -i 's/snakemake-executor-plugin-panda \\/snakemake-executor-plugin-panda==0.0.0 \\\n                --no-deps \/plugin \\/' "$GITHUB_WORKSPACE/panda-compose/worker.Dockerfile"
-          docker build -f "$GITHUB_WORKSPACE/panda-compose/worker.Dockerfile" -t panda-compose/snakemake-worker:${{ inputs.snakemake_version }} --build-arg SNAKEMAKE_VERSION=${{ inputs.snakemake_version }} --build-context plugin="$GITHUB_WORKSPACE/snakemake-executor-plugin-panda" "$GITHUB_WORKSPACE/panda-compose"
+          docker build -f "$GITHUB_WORKSPACE/panda-compose/worker.Dockerfile" -t panda-compose/snakemake-worker:$SNAKEMAKE_VERSION --build-arg SNAKEMAKE_VERSION=$SNAKEMAKE_VERSION --build-context plugin="$GITHUB_WORKSPACE/snakemake-executor-plugin-panda" "$GITHUB_WORKSPACE/panda-compose"
         env:
           SNAKEMAKE_VERSION: ${{ inputs.snakemake_version }}
 
@@ -170,6 +173,7 @@ jobs:
       # ---- 6. Run the mini snakemake workflow through the panda executor ----
       - name: Run snakemake workflow on PanDA
         env:
+          SNAKEMAKE_VERSION: ${{ inputs.snakemake_version }}
           PANDA_AUTH: x509_no_grid          # dev/no-auth server; skips grid passphrase prompt
           PANDA_VO: epic
           PANDA_AUTH_VO: EIC
@@ -182,7 +186,7 @@ jobs:
           RUCIO_CONFIG: /tmp/swf/rucio.cfg
         run: |
           set -euo pipefail
-          pip install --quiet "snakemake==${SNAKEMAKE_VERSION}" "$GITHUB_WORKSPACE/snakemake-executor-plugin-panda" snakemake-storage-plugin-rucio
+          pip install --quiet "snakemake==$SNAKEMAKE_VERSION" "$GITHUB_WORKSPACE/snakemake-executor-plugin-panda" snakemake-storage-plugin-rucio
           mkdir -p /tmp/swf
           # client-side rucio config: userpass auth against the compose rucio on host port 25081
           cat > /tmp/swf/rucio.cfg <<EOF
