@@ -211,23 +211,6 @@ jobs:
           RUCIO_CONFIG: /tmp/swf/rucio.cfg
         run: |
           set -euo pipefail
-          pip install --quiet "snakemake==$SNAKEMAKE_VERSION" "$GITHUB_WORKSPACE/snakemake-executor-plugin-panda" snakemake-storage-plugin-rucio
-          # apply the same int-cast patch to the HOST-side rucio storage plugin (the panda executor forwards --storage-rucio-timeout to workers; the local provider also parses it)
-          python3 - <<'PYEOF2'
-          import pathlib
-          import snakemake_storage_plugin_rucio as m
-          f = pathlib.Path(m.__file__)
-          src = f.read_text()
-          anchor = "self.client = rucio.client.Client(logger=self.logger, **client_kwargs)"
-          if anchor in src and "int(client_kwargs['timeout'])" not in src:
-              cast = ("client_kwargs['timeout'] = int(client_kwargs['timeout']) "
-                      "if client_kwargs.get('timeout') is not None else None\n        ")
-              src = src.replace(anchor, cast + anchor, 1)
-              f.write_text(src)
-              print("patched host rucio storage plugin:", f)
-          else:
-              print("host plugin already patched or anchor missing:", f)
-          PYEOF2
           mkdir -p /tmp/swf
           # client-side rucio config: userpass auth against the compose rucio on host port 25081
           cat > /tmp/swf/rucio.cfg <<EOF
@@ -245,6 +228,25 @@ jobs:
           request_retries = 3
           protocol_stat_retries = 6
           EOF
+          pip install --quiet "snakemake==$SNAKEMAKE_VERSION" "$GITHUB_WORKSPACE/snakemake-executor-plugin-panda" snakemake-storage-plugin-rucio
+          # int-cast patch for the HOST-side rucio storage plugin (str timeout crashes urllib3).
+          # Runs AFTER rucio.cfg exists: importing the plugin imports rucio, which loads
+          # RUCIO_CONFIG at import time.
+          python3 - <<'PYEOF2'
+          import pathlib
+          import snakemake_storage_plugin_rucio as m
+          f = pathlib.Path(m.__file__)
+          src = f.read_text()
+          anchor = "self.client = rucio.client.Client(logger=self.logger, **client_kwargs)"
+          if anchor in src and "int(client_kwargs['timeout'])" not in src:
+              cast = ("client_kwargs['timeout'] = int(client_kwargs['timeout']) "
+                      "if client_kwargs.get('timeout') is not None else None\n        ")
+              src = src.replace(anchor, cast + anchor, 1)
+              f.write_text(src)
+              print("patched host rucio storage plugin:", f)
+          else:
+              print("host plugin already patched or anchor missing:", f)
+          PYEOF2
           cd "$GITHUB_WORKSPACE/snakemake-executor-plugin-panda/tests/integration"
           snakemake \
             --executor panda --panda-pre-script "true" \
