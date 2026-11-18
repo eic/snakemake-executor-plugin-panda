@@ -45,6 +45,10 @@ env:
   # Pin the Rucio server/client major line: rucio-server:latest (45.x) drops
   # protocol keys the 41.x client expects (KeyError 'prefix' on upload).
   RUCIO_TAG: release-41.5.1
+  # Pin the CLIENT-side rucio wheel to the same 41.x line as the server
+  # (pip otherwise grabs the newest 4x client, whose protocol handling
+  # raises KeyError 'prefix' against a 41.x server).
+  RUCIO_CLIENT_VERSION: "rucio==41.5.1"
   # Stable project name so container names stay <project>-<service>-1
   # regardless of the --project-directory override (same trick as
   # swf-testbed: that override points at ../panda-compose so panda-compose's
@@ -231,7 +235,7 @@ jobs:
           request_retries = 3
           protocol_stat_retries = 6
           EOF
-          pip install --quiet "snakemake==$SNAKEMAKE_VERSION" "$GITHUB_WORKSPACE/snakemake-executor-plugin-panda" snakemake-storage-plugin-rucio
+          pip install --quiet "snakemake==$SNAKEMAKE_VERSION" "$GITHUB_WORKSPACE/snakemake-executor-plugin-panda" snakemake-storage-plugin-rucio "$RUCIO_CLIENT_VERSION"
           # int-cast patch for the HOST-side rucio storage plugin (str timeout crashes urllib3).
           # Runs AFTER rucio.cfg exists: importing the plugin imports rucio, which loads
           # RUCIO_CONFIG at import time.
