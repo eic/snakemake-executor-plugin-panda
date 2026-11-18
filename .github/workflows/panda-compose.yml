@@ -376,3 +376,8 @@ jobs:
           docker compose -f "$GITHUB_WORKSPACE/panda-compose/docker-compose.yml" -p panda-compose logs --tail=300 || true
           echo "::endgroup::"
           docker logs panda-compose-harvester-1 2>&1 | tail -200 || true
+          echo "::group::docker state"
+          docker ps -a || true
+          docker images || true
+          docker logs panda-compose-harvester-1 2>&1 | grep -iE 'submitter|docker|worker|queue' | tail -60 || true
+          echo "::endgroup::"
