@@ -64,6 +64,11 @@ common_settings = CommonSettings(
     # whether the default storage provider shall be deployed before the job is run on
     # the remote node. Usually set to True if the executor does not assume a shared fs
     auto_deploy_default_storage_provider=True,
+    # the PanDA worker downloads the workflow source archive itself from the
+    # storage provider (snakemake --deploy-sources), so the plugin can declare
+    # that it transfers local files; this keeps snakemake from uploading AND
+    # deleting the source archive on the host (rucio delete is not supported)
+    can_transfer_local_files=True,
     # specify initial amount of seconds to sleep before checking for job status
     init_seconds_before_status_checks=0,
 )
