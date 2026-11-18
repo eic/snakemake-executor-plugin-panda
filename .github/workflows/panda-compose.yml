@@ -147,9 +147,9 @@ jobs:
             .
 
       # ---- 4. Boot the stack, staged like swf-testbed ----
-      - name: Start infrastructure (postgres, activemq, ruciodb)
+      - name: Start infrastructure (postgres, activemq)
         run: |
-          docker compose --project-directory "$GITHUB_WORKSPACE/panda-compose" up -d postgres activemq ruciodb
+          docker compose -f "$GITHUB_WORKSPACE/panda-compose/docker-compose.yml" -p panda-compose up -d postgres activemq
 
       - name: Wait for PostgreSQL stability
         run: |
@@ -165,7 +165,7 @@ jobs:
 
       - name: Start PanDA server, Rucio, idds, harvester
         run: |
-          docker compose --project-directory "$GITHUB_WORKSPACE/panda-compose" up -d panda-server rucio idds harvester
+          docker compose -f "$GITHUB_WORKSPACE/panda-compose/docker-compose.yml" -p panda-compose up -d
 
       - name: Wait for PanDA server and Rucio
         run: |
@@ -262,6 +262,6 @@ jobs:
         if: always()
         run: |
           echo "::group::compose logs"
-          docker compose --project-directory "$GITHUB_WORKSPACE/panda-compose" logs --tail=300 || true
+          docker compose -f "$GITHUB_WORKSPACE/panda-compose/docker-compose.yml" -p panda-compose logs --tail=300 || true
           echo "::endgroup::"
           docker logs panda-compose-harvester-1 2>&1 | tail -200 || true
