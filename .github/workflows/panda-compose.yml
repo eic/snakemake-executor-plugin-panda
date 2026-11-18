@@ -42,6 +42,9 @@ env:
   PANDA_COMPOSE_REPO: PanDAWMS/panda-compose
   PANDA_COMPOSE_REF: feature/harvester-docker-worker-rucio
   SNAKEMAKE_VERSION: "9.27.1"
+  # Pin the Rucio server/client major line: rucio-server:latest (45.x) drops
+  # protocol keys the 41.x client expects (KeyError 'prefix' on upload).
+  RUCIO_TAG: release-41
   # Stable project name so container names stay <project>-<service>-1
   # regardless of the --project-directory override (same trick as
   # swf-testbed: that override points at ../panda-compose so panda-compose's
