@@ -396,4 +396,5 @@ jobs:
           docker ps -a || true
           docker images || true
           docker logs panda-compose-harvester-1 2>&1 | grep -iE 'submitter|docker|worker|queue' | tail -60 || true
+          docker logs panda-compose-harvester-1 2>&1 | grep -viE 'urllib3|charset' | tail -400 || true
           echo "::endgroup::"
