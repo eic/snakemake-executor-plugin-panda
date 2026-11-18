@@ -170,7 +170,7 @@ jobs:
       - name: Wait for PanDA server and Rucio
         run: |
           for i in $(seq 1 60); do
-            panda=$(curl -s -o /dev/null -w '%{http_code}' -m 3 http://127.0.0.1:25080/api/v1/system/ping || true)
+            panda=$(curl -s -o /dev/null -w '%{http_code}' -m 3 http://127.0.0.1:25080/api/v1/system/is_alive || true)
             rucio=$(curl -s -o /dev/null -w '%{http_code}' -m 3 http://127.0.0.1:25081/ping || true)
             echo "panda=$panda rucio=$rucio ($i)"
             [ "$panda" = 200 ] && [ "$rucio" = 200 ] && break
