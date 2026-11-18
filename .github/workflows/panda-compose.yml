@@ -397,4 +397,7 @@ jobs:
           docker images || true
           docker logs panda-compose-harvester-1 2>&1 | grep -iE 'submitter|docker|worker|queue' | tail -60 || true
           docker logs panda-compose-harvester-1 2>&1 | grep -viE 'urllib3|charset' | tail -400 || true
+          docker exec panda-compose-harvester-1 cat /var/lib/panda/panda_queues.cfg || true
+          docker exec panda-compose-harvester-1 ls -la /harvester/plugins/ || true
+          docker logs panda-compose-harvester-1 2>&1 | grep -iE 'submitter|docker_submitter|DockerSubmitter|worker-[0-9]|containers/create|Image' | tail -40 || true
           echo "::endgroup::"
