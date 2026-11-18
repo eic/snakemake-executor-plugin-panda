@@ -1,6 +1,7 @@
-import uuid
-
-RUN = uuid.uuid4().hex[:8]
+# The run id comes from --config (forwarded to remote jobs), so the host and
+# the PanDA worker compute the same output name. Fall back to "ci" for local
+# runs without --config.
+RUN = config.get("run", "ci")
 
 # Output goes to the rucio storage provider (default-storage-prefix
 # rucio://mock is applied by the CI workflow); the name is a plain filename
