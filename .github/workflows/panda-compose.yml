@@ -334,7 +334,7 @@ jobs:
             --storage-rucio-download-rse MOCK-POSIX \
             --storage-rucio-upload-dataset snakemake-uploads \
             --config run=${{ github.run_id }}-${{ github.run_attempt }} \
-            --shared-fs-usage persistence software-deployment source-cache             -j1 --forceall --notemp 2>&1 | tee run.log || true
+            -j1 --forceall --notemp 2>&1 | tee run.log || true
           # extract the task id the executor printed ("Task id <N>")
           TASK_ID=$(grep -oE 'Task id [0-9]+' run.log | tail -1 | awk '{print $3}')
           echo "TASK_ID=$TASK_ID" >> "$GITHUB_ENV"
