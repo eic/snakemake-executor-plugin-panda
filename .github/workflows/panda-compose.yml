@@ -202,6 +202,15 @@ jobs:
             bash "$GITHUB_WORKSPACE/panda-compose/scripts/bootstrap-rucio.sh" panda-compose-rucio-1
           # Debug: dump the RSE protocol as the client sees it
           RUCIO_HOME=/tmp/swf RUCIO_CONFIG=/tmp/swf/rucio.cfg rucio rse show MOCK-POSIX 2>&1 | sed -n '/Protocols:/,/Usage:/p' | head -20 || true
+          RUCIO_HOME=/tmp/swf RUCIO_CONFIG=/tmp/swf/rucio.cfg python3 - <<'PYDBG' || true
+          from importlib.metadata import version
+          from rucio.client import Client
+          import json
+          print('rucio client version:', version('rucio'))
+          c = Client()
+          d = c.get_rse('MOCK-POSIX')
+          print('client-seen protocols:', json.dumps(d['protocols'], default=str)[:600])
+          PYDBG
 
       # ---- 6. Run the mini snakemake workflow through the panda executor ----
       - name: Run snakemake workflow on PanDA
