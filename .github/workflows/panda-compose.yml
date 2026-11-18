@@ -182,8 +182,18 @@ jobs:
       # ---- 5. Bootstrap Rucio (MOCK-POSIX RSE + scopes) ----
       - name: Bootstrap Rucio
         run: |
+          # Wait for rucio container health (like panda-compose's action.yml)
+          for i in $(seq 1 60); do
+            st=$(docker inspect --format '{{.State.Health.Status}}' panda-compose-rucio-1 2>/dev/null || echo starting)
+            echo "rucio health=$st ($i)"
+            [ "$st" = healthy ] && break
+            sleep 5
+          done
+          [ "$st" = healthy ] || { docker logs panda-compose-rucio-1 | tail -80; exit 1; }
           SCOPES="user.alice user.root mock" \
             bash "$GITHUB_WORKSPACE/panda-compose/scripts/bootstrap-rucio.sh" panda-compose-rucio-1
+          # Debug: dump the RSE protocol as the client sees it
+          RUCIO_HOME=/tmp/swf RUCIO_CONFIG=/tmp/swf/rucio.cfg rucio rse show MOCK-POSIX 2>&1 | sed -n '/Protocols:/,/Usage:/p' | head -20 || true
 
       # ---- 6. Run the mini snakemake workflow through the panda executor ----
       - name: Run snakemake workflow on PanDA
@@ -227,6 +237,7 @@ jobs:
             --storage-rucio-upload-rse MOCK-POSIX \
             --storage-rucio-download-rse MOCK-POSIX \
             --storage-rucio-upload-dataset snakemake-uploads \
+            --storage-rucio-timeout 600 \
             -j1 --forceall 2>&1 | tee run.log
           # extract the task id the executor printed ("Task id <N>")
           TASK_ID=$(grep -oE 'Task id [0-9]+' run.log | tail -1 | awk '{print $3}')
