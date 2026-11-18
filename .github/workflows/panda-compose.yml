@@ -205,15 +205,19 @@ jobs:
           mkdir -p /tmp/swf
           # client-side rucio config: userpass auth against the compose rucio on host port 25081
           cat > /tmp/swf/rucio.cfg <<EOF
+          [common]
+          logdir = /tmp/swf/logs
+          loglevel = DEBUG
+          logformat = %(asctime)s\t%(process)d\t%(levelname)s\t%(message)s
           [client]
           rucio_host = http://127.0.0.1:25081
+          auth_host = http://127.0.0.1:25081
           auth_type = userpass
           username = ddmlab
           password = secret
           account = root
-          ca_cert = false
-          [common]
-          loglevel = DEBUG
+          request_retries = 3
+          protocol_stat_retries = 6
           EOF
           cd "$GITHUB_WORKSPACE/snakemake-executor-plugin-panda/tests/integration"
           snakemake \
