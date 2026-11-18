@@ -144,8 +144,11 @@ jobs:
           cast = ("client_kwargs['timeout'] = int(client_kwargs['timeout']) "
                   "if client_kwargs.get('timeout') is not None else None\n        ")
           src = src.replace(anchor, cast + anchor, 1)
+          rm = "    def remove(self) -> None:"
+          if rm in src and "no-op for PanDA/CI" not in src:
+              src = src.replace(rm, rm + "\n        # no-op for PanDA/CI: rucio has no per-replica delete\n        return None\n        ", 1)
           p.write_text(src)
-          print("patched rucio storage plugin timeout cast")
+          print("patched rucio storage plugin timeout cast + remove() no-op")
           PYEOF
           cd "$GITHUB_WORKSPACE/snakemake-executor-plugin-panda"
           docker build -f worker.Dockerfile \
@@ -270,6 +273,19 @@ jobs:
               print("patched host rucio storage plugin:", f)
           else:
               print("host plugin already patched or anchor missing:", f)
+          # The panda executor deploys the workflow source archive to the rucio
+          # storage provider and snakemake deletes it on exit — upstream 0.6.0
+          # raises NotImplementedError there, failing the whole run after the
+          # task succeeded. Make remove() a no-op (archive stays as provenance).
+          rm_anchor = "    def remove(self) -> None:"
+          if rm_anchor in src and "no-op for PanDA/CI" not in src:
+              src = src.replace(
+                  rm_anchor,
+                  rm_anchor + "\n        # no-op for PanDA/CI: rucio has no per-replica delete\n        return None\n        " ,
+                  1,
+              )
+              f.write_text(src)
+              print("patched host plugin remove() -> no-op:", f)
           PYEOF2
           # --- DEBUG: reproduce the upload path in-runner to find the KeyError 'prefix' source ---
           RUCIO_HOME=/tmp/swf RUCIO_CONFIG=/tmp/swf/rucio.cfg python3 - <<'PYPROBE' || true
