@@ -116,6 +116,7 @@ jobs:
       - name: Build snakemake worker image
         env:
           SNAKEMAKE_VERSION: ${{ inputs.snakemake_version || env.SNAKEMAKE_VERSION }}
+          RUCIO_CLIENT_VERSION: $RUCIO_CLIENT_VERSION
         run: |
           set -euo pipefail
           DF="$GITHUB_WORKSPACE/snakemake-executor-plugin-panda/worker.Dockerfile"
@@ -126,7 +127,7 @@ jobs:
                 snakemake==${SNAKEMAKE_VERSION} \
                 snakemake-executor-plugin-panda \
                 snakemake-storage-plugin-rucio \
-                rucio
+                $RUCIO_CLIENT_VERSION
           COPY . /plugin
           RUN pip install --quiet --no-deps /plugin
           # upstream snakemake-storage-plugin-rucio bug: --storage-rucio-timeout
