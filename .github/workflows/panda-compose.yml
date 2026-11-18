@@ -269,6 +269,7 @@ jobs:
           import json, logging, tempfile, os, traceback
           from importlib.metadata import version
           print("rucio client version:", version("rucio"))
+          print("storage plugin version:", version("snakemake-storage-plugin-rucio"))
           import rucio
           print("rucio module:", rucio.__file__)
           from rucio.client import Client
