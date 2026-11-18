@@ -264,6 +264,49 @@ jobs:
           else:
               print("host plugin already patched or anchor missing:", f)
           PYEOF2
+          # --- DEBUG: reproduce the upload path in-runner to find the KeyError 'prefix' source ---
+          RUCIO_HOME=/tmp/swf RUCIO_CONFIG=/tmp/swf/rucio.cfg python3 - <<'PYPROBE' || true
+          import json, logging, tempfile, os, traceback
+          from importlib.metadata import version
+          print("rucio client version:", version("rucio"))
+          import rucio
+          print("rucio module:", rucio.__file__)
+          from rucio.client import Client
+          from rucio.rse import rsemanager as rsemgr
+          c = Client()
+          d = c.get_rse("MOCK-POSIX")
+          print("client-seen protocols:", json.dumps(d["protocols"], default=str)[:800])
+          info = rsemgr.get_rse_info("MOCK-POSIX", vo=c.vo)
+          print("rsemgr protocols:", json.dumps(info["protocols"], default=str)[:800])
+          for domain in ("wan", "lan"):
+              try:
+                  protos = rsemgr.get_protocols_ordered(rse_settings=info, operation="write", scheme="file", domain=domain)
+                  print(domain, "ordered:", [(p["scheme"], p.get("prefix")) for p in protos])
+                  proto = rsemgr.create_protocol(info, "write", scheme="file", domain=domain)
+                  print(domain, "protocol attrs prefix:", proto.attributes.get("prefix"))
+                  pfn = list(proto.lfns2pfns({"scope": "mock", "name": "probe.txt"}).values())[0]
+                  print(domain, "pfn:", pfn)
+              except Exception:
+                  print(domain, "FAILED:")
+                  traceback.print_exc()
+          # live upload attempt through UploadClient (what the storage plugin uses)
+          from rucio.client.uploadclient import UploadClient
+          uc = UploadClient(_client=c)
+          with tempfile.NamedTemporaryFile(delete=False, suffix=".txt") as f:
+              f.write(b"ci-probe")
+              path = f.name
+          try:
+              n = uc.upload([{"path": path, "rse": "MOCK-POSIX", "did_scope": "mock",
+                              "did_name": "ci-probe-runner.txt",
+                              "dataset_scope": "mock", "dataset_name": "snakemake-uploads",
+                              "register_after_upload": True}])
+              print("UPLOAD OK, n =", n)
+          except Exception as e:
+              print("UPLOAD FAIL:", type(e).__name__, str(e)[:300])
+              traceback.print_exc()
+          finally:
+              os.unlink(path)
+          PYPROBE
           cd "$GITHUB_WORKSPACE/snakemake-executor-plugin-panda/tests/integration"
           snakemake \
             --executor panda --panda-pre-script "true" \
