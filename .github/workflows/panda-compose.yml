@@ -188,6 +188,12 @@ jobs:
           [ "$rucio" = 200 ] || { docker logs panda-compose-rucio-1 | tail -80; exit 1; }
 
       # ---- 5. Bootstrap Rucio (MOCK-POSIX RSE + scopes) ----
+      - name: Prepare RSE storage dir on the runner
+        run: |
+          sudo mkdir -p /tmp/rucio_rse
+          sudo chmod 777 /tmp/rucio_rse
+          ls -ld /tmp/rucio_rse
+
       - name: Bootstrap Rucio
         run: |
           # Wait for rucio container health (like panda-compose's action.yml)
