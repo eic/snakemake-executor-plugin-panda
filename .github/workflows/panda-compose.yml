@@ -292,6 +292,16 @@ jobs:
                   traceback.print_exc()
           # live upload attempt through UploadClient (what the storage plugin uses)
           from rucio.client.uploadclient import UploadClient
+          import rucio.client.uploadclient as ucmod
+          orig_upload_item = UploadClient._upload_item
+          def traced_upload_item(self, **kw):
+              try:
+                  return orig_upload_item(self, **kw)
+              except Exception as e:
+                  print('INNER _upload_item EXCEPTION:', type(e).__name__, str(e)[:400])
+                  traceback.print_exc()
+                  raise
+          UploadClient._upload_item = traced_upload_item
           uc = UploadClient(_client=c)
           with tempfile.NamedTemporaryFile(delete=False, suffix=".txt") as f:
               f.write(b"ci-probe")
