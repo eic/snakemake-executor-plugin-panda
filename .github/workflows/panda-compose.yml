@@ -369,11 +369,15 @@ jobs:
           RUCIO_HOME: /tmp/swf
           RUCIO_CONFIG: /tmp/swf/rucio.cfg
         run: |
-          rucio did list 'mock:out--*' | tee dids.txt
-          grep -q 'mock:out--' dids.txt || { echo "no output DID registered"; exit 1; }
-          DID=$(grep -oE 'mock:out--[A-Za-z0-9._-]+' dids.txt | tail -1)
-          echo "verifying $DID"
-          rucio list-files mock:snakemake-uploads | grep -F "$DID" || { echo "DID not in upload dataset"; exit 1; }
+          # The output DID is deterministic: out-<run_id>-<attempt>.txt with
+          # rucio's DID-name escaping of '-' => 'out--<run_id>--<attempt>.txt'.
+          # (`rucio did list 'mock:out--*'` is NOT usable as an assertion: it
+          # issues a type=collection search which never matches file DIDs.)
+          DID="mock:out--${{ github.run_id }}--${{ github.run_attempt }}.txt"
+          echo "expecting output DID: $DID"
+          rucio list-files mock:snakemake-uploads | tee files.txt
+          grep -F "$DID" files.txt || { echo "output DID not in upload dataset"; exit 1; }
+          rucio did show "$DID" || { echo "DID not registered"; exit 1; }
           PFN=$(python3 -c "
           from rucio.client import Client
           c = Client()
