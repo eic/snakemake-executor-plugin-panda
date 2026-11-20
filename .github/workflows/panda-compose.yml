@@ -61,7 +61,7 @@ env:
 
 jobs:
   panda-compose:
-    name: snakemake -> PanDA -> docker worker -> Rucio
+    name: Run jobs against panda-compose
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
