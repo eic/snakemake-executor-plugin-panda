@@ -1,0 +1,282 @@
+name: PanDA Compose Integration
+
+# End-to-end test of snakemake-executor-plugin-panda against a real
+# PanDA WMS stack, brought up with panda-compose (PanDAWMS/panda-compose),
+# mirroring how BNLNPPS/swf-testbed wires panda-compose into CI:
+# the plugin repo checks out panda-compose as a sibling, boots the stack,
+# and runs a mini snakemake workflow whose single job is brokered by JEDI,
+# submitted by the harvester's DockerSubmitter to a worker container,
+# executed there, and staged out to Rucio.
+#
+# The job succeeds iff the workflow exits 0 (the panda executor blocks on
+# task status and fails on non-done terminal states) AND the output file
+# is registered in the Rucio catalogue on MOCK-POSIX.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      panda_compose_repo:
+        description: 'owner/repo of panda-compose to check out'
+        required: false
+        type: string
+        default: PanDAWMS/panda-compose
+      panda_compose_ref:
+        description: 'Git ref (branch, tag, or SHA) of panda-compose'
+        required: false
+        type: string
+        default: feature/harvester-docker-worker-rucio
+      snakemake_version:
+        description: 'snakemake version to install in the worker image'
+        required: false
+        type: string
+        default: "9.27.1"
+
+env:
+  # Defaults used on pull_request/push events, where workflow_dispatch
+  # `inputs.*` are empty. workflow_dispatch passes its inputs through the
+  # per-step env mappings below, overriding these.
+  PANDA_COMPOSE_REPO: PanDAWMS/panda-compose
+  PANDA_COMPOSE_REF: feature/harvester-docker-worker-rucio
+  SNAKEMAKE_VERSION: "9.27.1"
+  # Pin the Rucio server/client major line: rucio-server:latest (45.x) drops
+  # protocol keys the 41.x client expects (KeyError 'prefix' on upload).
+  RUCIO_TAG: release-41.5.1
+  # Pin the CLIENT-side rucio wheel to the same 41.x line as the server
+  # (pip otherwise grabs the newest 4x client, whose protocol handling
+  # raises KeyError 'prefix' against a 41.x server).
+  RUCIO_CLIENT_VERSION: "rucio==41.5.1"
+  # snakemake-storage-plugin-rucio 0.6.0 is the version proven against this
+  # stack; ci/patch_rucio_storage_plugin.py fixes two of its bugs in place.
+  RUCIO_STORAGE_PLUGIN_VERSION: "snakemake-storage-plugin-rucio==0.6.0"
+  # Stable project name so container names stay <project>-<service>-1
+  # regardless of the --project-directory override (same trick as
+  # swf-testbed: that override points at ../panda-compose so panda-compose's
+  # relative volume paths ./config, ./scripts resolve against its own
+  # checkout).
+  COMPOSE_PROJECT_NAME: panda-compose
+  COMPOSE_FILE: ${{ github.workspace }}/panda-compose/docker-compose.yml
+
+jobs:
+  panda-compose:
+    name: Run jobs against panda-compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    concurrency:
+      group: panda-compose-integration-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      # ---- 1. Check out the plugin repo and panda-compose as siblings ----
+      - name: Checkout plugin repo
+        uses: actions/checkout@v4
+        with:
+          path: snakemake-executor-plugin-panda
+
+      - name: Checkout panda-compose
+        env:
+          PC_REPO: ${{ inputs.panda_compose_repo || env.PANDA_COMPOSE_REPO }}
+          PC_REF: ${{ inputs.panda_compose_ref || env.PANDA_COMPOSE_REF }}
+        run: |
+          set -euo pipefail
+          : "${PC_REPO:?panda_compose_repo input empty}"
+          : "${PC_REF:?panda_compose_ref input empty}"
+          git clone --depth 1 --branch "$PC_REF" "https://github.com/${PC_REPO}.git" "$GITHUB_WORKSPACE/panda-compose"
+          ls "$GITHUB_WORKSPACE/panda-compose" | head -8
+
+      # ---- 2. panda-compose .env (from upstream example; no secrets needed
+      #         beyond the shipped dev defaults, exactly like swf-testbed) ----
+      - name: Create panda-compose .env
+        env:
+          SNAKEMAKE_VERSION: ${{ inputs.snakemake_version || env.SNAKEMAKE_VERSION }}
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/panda-compose"
+          cp .env.example .env
+          # One local docker queue is enough; the executor targets E1_BNL by
+          # default which setup-queue.sh registers as a local queue.
+          printf 'PANDA_QUEUES=PANDA_COMPOSE_LOCAL E1_BNL\n' >> .env
+          # The snakemake worker image built in the previous step becomes the
+          # queue-level default (render-panda-queues.py applies this to the
+          # queue template's containerImage).
+          printf 'PANDA_WORKER_IMAGE=panda-compose/snakemake-worker:%s\n' "$SNAKEMAKE_VERSION" >> .env
+
+      # ---- 3. Build the snakemake worker image (ci/worker.Dockerfile) ----
+      #
+      # The harvester queue's containerImage is this worker: the base python
+      # image plus this plugin (from the PR checkout, so the test exercises
+      # the code under review), snakemake, and the patched rucio storage
+      # plugin (ci/patch_rucio_storage_plugin.py).
+      - name: Build snakemake worker image
+        env:
+          SNAKEMAKE_VERSION: ${{ inputs.snakemake_version || env.SNAKEMAKE_VERSION }}
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/snakemake-executor-plugin-panda"
+          docker build -f ci/worker.Dockerfile \
+            --build-arg SNAKEMAKE_VERSION="$SNAKEMAKE_VERSION" \
+            --build-arg RUCIO_CLIENT_VERSION="$RUCIO_CLIENT_VERSION" \
+            --build-arg RUCIO_STORAGE_PLUGIN_VERSION="$RUCIO_STORAGE_PLUGIN_VERSION" \
+            -t "panda-compose/snakemake-worker:$SNAKEMAKE_VERSION" .
+
+      # ---- 4. Boot the stack, staged like swf-testbed ----
+      - name: Start infrastructure (postgres, activemq)
+        run: |
+          docker compose -f "$GITHUB_WORKSPACE/panda-compose/docker-compose.yml" -p panda-compose up -d postgres activemq
+
+      - name: Wait for PostgreSQL stability
+        run: |
+          # panda-database restarts once during first init; require two
+          # consecutive healthy reads (same as swf-testbed).
+          for i in $(seq 1 60); do
+            s=$(docker inspect --format '{{.State.Health.Status}}' panda-compose-postgres-1 2>/dev/null || echo starting)
+            echo "postgres health=$s ($i)"
+            if [ "$s" = healthy ]; then c=$((c+1)); [ "$c" -ge 2 ] && break; else c=0; fi
+            sleep 5
+          done
+          [ "${c:-0}" -ge 2 ] || { docker logs panda-compose-postgres-1 | tail -80; exit 1; }
+
+      - name: Start PanDA server, Rucio, idds, harvester
+        run: |
+          docker compose -f "$GITHUB_WORKSPACE/panda-compose/docker-compose.yml" -p panda-compose up -d
+
+      - name: Wait for PanDA server and Rucio
+        run: |
+          for i in $(seq 1 60); do
+            panda=$(curl -s -o /dev/null -w '%{http_code}' -m 3 http://127.0.0.1:25080/api/v1/system/is_alive || true)
+            rucio=$(curl -s -o /dev/null -w '%{http_code}' -m 3 http://127.0.0.1:25081/ping || true)
+            echo "panda=$panda rucio=$rucio ($i)"
+            [ "$panda" = 200 ] && [ "$rucio" = 200 ] && break
+            sleep 5
+          done
+          [ "$panda" = 200 ] || { docker logs panda-compose-panda-server-1 | tail -80; exit 1; }
+          [ "$rucio" = 200 ] || { docker logs panda-compose-rucio-1 | tail -80; exit 1; }
+
+      # ---- 5. Bootstrap Rucio (MOCK-POSIX RSE + scopes) ----
+      - name: Prepare RSE storage dir on the runner
+        run: |
+          # The rucio server bind-mounts /tmp/rucio_rse; without a writable
+          # dir here, posix put() falls into an OSError branch that reads
+          # rse['prefix'] from the wrong dict -> KeyError 'prefix'.
+          sudo mkdir -p /tmp/rucio_rse
+          sudo chmod 777 /tmp/rucio_rse
+
+      - name: Bootstrap Rucio
+        run: |
+          # Wait for rucio container health (like panda-compose's action.yml)
+          for i in $(seq 1 60); do
+            st=$(docker inspect --format '{{.State.Health.Status}}' panda-compose-rucio-1 2>/dev/null || echo starting)
+            echo "rucio health=$st ($i)"
+            [ "$st" = healthy ] && break
+            sleep 5
+          done
+          [ "$st" = healthy ] || { docker logs panda-compose-rucio-1 | tail -80; exit 1; }
+          SCOPES="user.alice user.root mock" \
+            bash "$GITHUB_WORKSPACE/panda-compose/scripts/bootstrap-rucio.sh" panda-compose-rucio-1
+
+      # ---- 6. Run the mini snakemake workflow through the panda executor ----
+      - name: Run snakemake workflow on PanDA
+        env:
+          SNAKEMAKE_VERSION: ${{ inputs.snakemake_version || env.SNAKEMAKE_VERSION }}
+          PANDA_AUTH: x509_no_grid
+          X509_USER_PROXY: /dev/null          # dev/no-auth server; skips grid passphrase prompt
+          PANDA_VO: epic
+          PANDA_AUTH_VO: EIC
+          PANDA_SITE: E1_BNL
+          PANDA_NICKNAME: alice
+          PANDA_URL: http://127.0.0.1:25080/server/panda
+          PANDA_URL_SSL: http://127.0.0.1:25080/server/panda
+          PANDACACHE_URL: http://127.0.0.1:25080/server/panda
+          RUCIO_HOME: /tmp/swf
+          RUCIO_CONFIG: /tmp/swf/rucio.cfg
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/swf
+          # client-side rucio config: userpass auth against the compose rucio on host port 25081
+          cat > /tmp/swf/rucio.cfg <<EOF
+          [common]
+          logdir = /tmp/swf/logs
+          loglevel = DEBUG
+          logformat = %(asctime)s\t%(process)d\t%(levelname)s\t%(message)s
+          [client]
+          rucio_host = http://127.0.0.1:25081
+          auth_host = http://127.0.0.1:25081
+          auth_type = userpass
+          username = ddmlab
+          password = secret
+          account = root
+          request_retries = 3
+          protocol_stat_retries = 6
+          EOF
+          pip install --quiet "snakemake==$SNAKEMAKE_VERSION" \
+            "$GITHUB_WORKSPACE/snakemake-executor-plugin-panda" \
+            "$RUCIO_STORAGE_PLUGIN_VERSION" "$RUCIO_CLIENT_VERSION"
+          # Patch the HOST-side rucio storage plugin (same two fixes the
+          # worker image bakes in). Runs AFTER rucio.cfg exists: importing
+          # the plugin imports rucio, which loads RUCIO_CONFIG at import time.
+          python3 "$GITHUB_WORKSPACE/snakemake-executor-plugin-panda/ci/patch_rucio_storage_plugin.py"
+          cd "$GITHUB_WORKSPACE/snakemake-executor-plugin-panda/tests/integration"
+          snakemake \
+            --executor panda --panda-pre-script "true" \
+            --default-storage-provider rucio --default-storage-prefix rucio://mock \
+            --storage-rucio-cache-scope \
+            --storage-rucio-upload-rse MOCK-POSIX \
+            --storage-rucio-download-rse MOCK-POSIX \
+            --storage-rucio-upload-dataset snakemake-uploads \
+            --config run=${{ github.run_id }}-${{ github.run_attempt }} \
+            -j1 --forceall --notemp 2>&1 | tee run.log || true
+          # extract the task id the executor printed ("Task id <N>")
+          TASK_ID=$(grep -oE 'Task id [0-9]+' run.log | tail -1 | awk '{print $3}')
+          echo "TASK_ID=$TASK_ID" >> "$GITHUB_ENV"
+          # snakemake blocks until the task is done; verify via the REST API too
+          for i in $(seq 1 60); do
+            ST=$(curl -s -m 5 -H "Accept: application/json" "http://127.0.0.1:25080/api/v1/task/get_status?task_id=$TASK_ID" | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"])')
+            echo "task $TASK_ID status=$ST ($i)"
+            case "$ST" in done|finished) break;; failed|broken|aborted) exit 1;; esac
+            sleep 10
+          done
+          [ "$ST" = done ] || [ "$ST" = finished ] || { echo "task did not succeed: $ST"; exit 1; }
+
+      # ---- 7. Verify the output landed in Rucio on MOCK-POSIX ----
+      - name: Verify output in Rucio
+        env:
+          RUCIO_HOME: /tmp/swf
+          RUCIO_CONFIG: /tmp/swf/rucio.cfg
+        run: |
+          # The output DID is deterministic: out-<run_id>-<attempt>.txt with
+          # rucio's DID-name escaping of '-' => 'out--<run_id>--<attempt>.txt'.
+          # (`rucio did list 'mock:out--*'` is NOT usable as an assertion: it
+          # issues a type=collection search which never matches file DIDs.)
+          DID="mock:out--${{ github.run_id }}--${{ github.run_attempt }}.txt"
+          echo "expecting output DID: $DID"
+          rucio list-files mock:snakemake-uploads | tee files.txt
+          grep -F "$DID" files.txt || { echo "output DID not in upload dataset"; exit 1; }
+          rucio did show "$DID" || { echo "DID not registered"; exit 1; }
+          PFN=$(python3 -c "
+          from rucio.client import Client
+          c = Client()
+          for r in c.list_replicas([{'scope':'mock','name':'$DID'.replace('mock:','')}], schemes=['file']):
+              for pfn in r['pfns']: print(pfn)
+          ")
+          echo "PFN=$PFN"
+          docker exec panda-compose-rucio-1 sh -c "test -s '${PFN#file://localhost}' && cat '${PFN#file://localhost}'" \
+            || { echo "replica file missing/empty on MOCK-POSIX"; exit 1; }
+
+      # ---- 8. Always dump logs for post-mortem ----
+      - name: Dump service logs
+        if: always()
+        run: |
+          echo "::group::compose logs"
+          docker compose -f "$GITHUB_WORKSPACE/panda-compose/docker-compose.yml" -p panda-compose logs --tail=300 || true
+          echo "::endgroup::"
+          echo "::group::harvester + worker logs"
+          docker logs panda-compose-harvester-1 2>&1 | grep -viE 'urllib3|charset' | tail -400 || true
+          docker ps -a --filter 'name=harvester-worker' --format '{{.Names}} {{.Status}}' || true
+          for c in $(docker ps -aq --filter 'name=harvester-worker'); do
+            echo "--- $c ---"
+            docker logs "$c" 2>&1 | tail -120 || true
+          done
+          echo "::endgroup::"

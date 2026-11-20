@@ -89,7 +89,7 @@ class Executor(RemoteExecutor):
 
         prun_args = [
             "--exec", f"{self.workflow.executor_settings.pre_script}; sh -x ./{Path(jobscript).name} && sh -c 'echo done > dummy'",
-            "--outDS", f"user.veprbl.{uuid.uuid1()}",
+            "--outDS", f"user.{os.getenv('PANDA_NICKNAME', 'panda').replace('.', '_')}.{uuid.uuid1()}",
             "--nJobs", "1",
             "--vo", os.getenv('PANDA_VO', 'wlcg'),
             "--site", os.getenv('PANDA_SITE', 'BNL_PanDA_1'),
