@@ -90,6 +90,8 @@ jobs:
       # ---- 2. panda-compose .env (from upstream example; no secrets needed
       #         beyond the shipped dev defaults, exactly like swf-testbed) ----
       - name: Create panda-compose .env
+        env:
+          SNAKEMAKE_VERSION: ${{ inputs.snakemake_version || env.SNAKEMAKE_VERSION }}
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/panda-compose"
@@ -97,6 +99,10 @@ jobs:
           # One local docker queue is enough; the executor targets E1_BNL by
           # default which setup-queue.sh registers as a local queue.
           printf 'PANDA_QUEUES=PANDA_COMPOSE_LOCAL E1_BNL\n' >> .env
+          # The snakemake worker image built in the previous step becomes the
+          # queue-level default (render-panda-queues.py applies this to the
+          # queue template's containerImage).
+          printf 'PANDA_WORKER_IMAGE=panda-compose/snakemake-worker:%s\n' "$SNAKEMAKE_VERSION" >> .env
 
       # ---- 3. Build the snakemake worker image (ci/worker.Dockerfile) ----
       #
