@@ -382,7 +382,7 @@ jobs:
           from rucio.client import Client
           c = Client()
           for r in c.list_replicas([{'scope':'mock','name':'$DID'.replace('mock:','')}], schemes=['file']):
-              for pfn in r['pfns'].values(): print(pfn)
+              for pfn in r['pfns']: print(pfn)
           ")
           echo "PFN=$PFN"
           docker exec panda-compose-rucio-1 sh -c "test -s '${PFN#file://localhost}' && cat '${PFN#file://localhost}'" \
