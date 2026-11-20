@@ -356,7 +356,7 @@ jobs:
           echo "TASK_ID=$TASK_ID" >> "$GITHUB_ENV"
           # snakemake blocks until the task is done; verify via the REST API too
           for i in $(seq 1 60); do
-            ST=$(curl -s -m 5 "http://127.0.0.1:25080/api/v1/task/get_status?task_id=$TASK_ID" | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"])')
+            ST=$(curl -s -m 5 -H "Accept: application/json" "http://127.0.0.1:25080/api/v1/task/get_status?task_id=$TASK_ID" | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"])')
             echo "task $TASK_ID status=$ST ($i)"
             case "$ST" in done|finished) break;; failed|broken|aborted) exit 1;; esac
             sleep 10
@@ -400,4 +400,7 @@ jobs:
           docker exec panda-compose-harvester-1 cat /var/lib/panda/panda_queues.cfg || true
           docker exec panda-compose-harvester-1 ls -la /harvester/plugins/ || true
           docker logs panda-compose-harvester-1 2>&1 | grep -iE 'submitter|docker_submitter|DockerSubmitter|worker-[0-9]|containers/create|Image' | tail -40 || true
+          docker ps -a --filter 'name=harvester-worker' --format '{{.Names}} {{.Status}}' || true
+          for c in $(docker ps -aq --filter 'name=harvester-worker'); do docker logs $c 2>&1 | tail -120; done || true
+          docker exec panda-compose-harvester-1 sh -c 'ls -laR /tmp/harvester_output 2>/dev/null | head -60' || true
           echo "::endgroup::"
